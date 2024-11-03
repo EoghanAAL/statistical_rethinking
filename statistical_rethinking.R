@@ -8,12 +8,13 @@ library(rethinking)
 #something that I think I've basically not thought through properly is the fact
 #that what we are doing with this kind of estimation is giving probabilities
 #to probability values e.g what happens here is that we are trying to 
-#estimate the true probability of landing on water - and we do this by assigning
+#estimate the true probability of landing on water (equiv to the true percentage of water) - and we do this by assigning
 #probabilities to all of the different p values. Roughly, I think what happens
 #below is that "p_grid" is basically a grid containing 20 possible values for
 #the probability of water. Then, a prior probability is assigned to each of these
-#values i.e it is decided how likely each value will be. Then we calculate the
-#likelihood by using the binomial distribution to determine how likely it is
+#values i.e it is decided how likely each value will be (in this case, all p values 
+#are initially given the same prior).  Then we calculate the likelihood by using
+#the binomial distribution to determine how likely it is
 #that each p value produces the data, where the relevant data is implicit in
 #the binomial calculation i.e. the data is that there was 9 trials and on 6 
 #water was found. Importantly for your intuitions, the likelihood calculation
@@ -64,7 +65,9 @@ library(rethinking)
 #Apparently this is a relatively suboptimal way to go
 #about things but it makes the intuitions behind what we are doing clear. 
 
-
+# Important philosophical idea: if a prior gives 0 prior probability to a hypothesis,
+# then it won't matter how well that hypothesis fits with the data - the posterior
+# probability of that hypothesis will still be 0.
 
 # define grid
 p_grid <- seq( from=0 , to=1 , length.out=20 )
@@ -124,7 +127,7 @@ precis( globe.qa )
 #possible accuracy). We are still here just trying to approximate the ideal calculations
 #for the data that we have. This also emphasises that much of the time when stat
 #procedures want more data, it's often not to maximise real world accuracy but
-#rather estimation-of-bayes accuracy, which is clearly distinct through also 
+#rather estimation-of-bayes accuracy, which is clearly distinct though also 
 #presumably related. Interesting!
 
 
@@ -231,7 +234,7 @@ sum( posterior[ p_grid < 0.5 ] ) # 0.1719
 #we now want to do the same with the samples we just got, because that's more generalisable.
 #each element of the samples is a percentage for how much of the earth is covered in water.
 #unlike in the actual posterior, the probabilities of each percentage (from p_grid)
-#is not directly represented. So what we need to do is literally count the amount of
+#are not directly represented. So what we need to do is literally count the amount of
 #values in the sample that are below 0.5 and divide this by the total number of values
 #in order to get a percentage. This is here done again using the "sum" function because 
 #of a quirk with how sum() works, but this can seem unintuitive. In cases like this, sum()
@@ -256,6 +259,12 @@ quantile( samples , 0.8 )
 #or the middle 80% - between 10th and 90th percentile
 quantile( samples , c( 0.1 , 0.9 ) )
 
+#to be clear about what happens here - in the first case, we want to find out the bounds which
+#contain the first 80% of the probability density. In the second case, we want to find
+#the bounds - namely, the probability values/proportion of the earth covered in water values
+# - which contain the middle 80% of the probability density i.e. have 10% probability density
+#on either side of them.
+
 #these percentile intervals can do a good job of communicating the shape of the
 #distribution, as long as the distribution is not too asymmetrical. Basically, 
 #these communicate information under assumptions of a gaussian. But if it's not
@@ -263,7 +272,12 @@ quantile( samples , c( 0.1 , 0.9 ) )
 #be the densest or most important part of the dataset. e.g. in this posterior --
 #we get the percentile intervals, with 25% of probability mass above and below
 #the interval. But this hides that the top 25% is taken up by a small amount of 
-#highly probably values.
+#highly probably values. PI is part of the rethinking package, and basically chops
+#whatever prob value you give it out of the middle. Notably, this doesn't communicate
+#the shape of the dist very well because it excludes the highly informative right tail.
+#HDPI, also from rethinking, chops out the densest part of the dist with the inputted
+#probability density, and thus is more useful for locating informtative parts of the dist.
+
 
 p_grid <- seq( from=0 , to=1 , length.out=1000 )
 prior <- rep(1,1000)
@@ -281,12 +295,156 @@ HPDI( samples , prob=0.5 )
 #mostly these two intervals looks the same if the post dist isn't v skewed.
 #HDPI is more computationally intensive and has greater simulation variance i.e. is
 #sensitive to how many samples are drawn from the post dist. but mostly it shouldn't
-#matter that much. 
+#matter that much. If it does, you should just plot the entire dist. There is no need
+#to remove information by summarising if you don't need to.
 
+#notes that all CIs are are ways to communicate the shape of the dist. 95% doesn't necessary
+#tell you anything beyond that.
 
+#common interpretation of CIs that the 95% CI means that there is a probability 0.95
+#that the true parameter lies within the interval. In strict non-bayes inference, such
+#a statement is never correct, bc non-bayes inference forbids using probability to measure
+#uncertainty about parameters. The real interpretation on this picture is that if the study were
+#repeated many times, then 95% of the time the true parameter value would fall within the confidence
+#interval.
 
+#in reality it's very incorrect to say that the 95% interval contains the true value
+#95% of the time. CIs are far too overconfident. 95% is the "small world" number, true of the
+#models logical world. Under all assumptions the model makes, the true value should be within
+#the CI. The 95% CI is still informative, but extrapolations from it to the larger world, where
+#assumptions may not hold, needs to be done with care.
 
+#people often want a point estimate - a single value - to represent the dist. you don't
+#need to do this but we can look into it anyways. One way to do this is just to compute 
+#the "maximum a posteriori" estimate (the parameter with the highest post prob)
+p_grid[ which.max(posterior) ]
 
+#or you can use "chainmode" - maybe from rethinking - to approx the same point
+chainmode( samples , adj=0.01 )
 
+#or one could also pick the mean (average probability value) or the median (middle
+#probability value) - it's not clear which is best. these latter to at least give some
+#extra information about the shape of the dist
+mean( samples )
+median( samples )
 
+#a principled way to make the decision for point estimate is to use a loss function, 
+#which allows us to minimise the potential "loss" or degree of incorrectness on a point
+#estimate, where the estimate with the lowest loss is our estimate. If we want to just
+#minimise absolute loss - that is, find the point where, on average, we lose the least,
+#then basically we take every possible point estimate (which, again, is from the dist of
+#potential probabilities at getting water, which is a proxy for proportion of water on the planet)
+#, and find the "weighted average loss" for each possible estimate. To do this, we find the difference
+#between the estimate and every other value (where all of these might be true), and then in each case
+#multiple the output of this by the posterior probability that the different value is true. 
+#Intuitively, this is done so that if you estimated 0.5,  the 0.4 difference in the case that 0.1 is correct
+#can be substantially toned down by the fact that 0.1 is extremely unlikely. Similarly, more likely alternatives
+#are weighted more heavily by the inclusion of posterior probability. We do this procedure for the estimate
+#0.5 below, and get an average weighted loss of 0.312:
+sum( posterior*abs( 0.5 - p_grid ) )
+
+#basically, you need to do this for all possible estimates, and then pick out the estimate
+#where this value is the lowest. We can use sapply to create a loss calculation function, and
+#feed it into the entirety of p_grid.
+
+loss <- sapply( p_grid , function(d) sum( posterior*abs( d - p_grid ) ) )
+
+#then we just need to find the estimate with the lowest loss. We do this by using the index of the lowest
+#value in lost to find the respective p_grid value:
+
+p_grid[ which.min(loss) ]
+
+#this value is equivalent to (accounting for sampling error) the posterior median value.
+#In other words, this loss function justifies selecting the median for your loss estimate.
+#But if you picked a different loss function -- e.g. quadratic loss (est - p)^2 - you would
+#be justified in picking the mean instead (this one basically punishes bigger probability divergences)
+#It should be noted that in the case of a perfect gaussian these are the same, and in the cause of an approx
+#gaussian, they are normally almost the same. There are cases where loss function should be custom
+#depended on what you want to do with the point estimate. In general, where you don't need to destroy info,
+#don't bother.
+
+#generating samples from post makes it easier to simulate models implied observations.
+#(1) once you fit to real data, you can sample and compare to the data
+#(2) to check the software works, sample simulations from a known model and try to recover the params the data was simulated under
+#(3) simulating observations from your hypothesis can allow you to evaluate if your research
+# design can answer the questions you want to ask. One way to do this is via power analysis,
+# but you can also do other things
+#(4) Estimates can be used to simulate new predictions - can be useful for applied prediction
+# but also for model criticism and revision
+
+# model we've been building allows us to infer the plausibility of each p value
+# but also allow us to simulate the observations implied by the model. 
+# Likelihood functions work in both directions. Given an observation, the likelihood
+# function tells us how plausible it is. And given the parameters, the likelihood function
+# defines a dist of possible observations that we can sample from, to simulate observations. 
+# Bayes models are *generative*, and capable of simulating predictions. Many other models are not.
+
+# If we have a number of tosses, and a probability of water, we can use the (binomial) likelihood
+# function to determine the likelihood of different combinations of water/non-water emerging from
+# those tosses. Assuming n = 2, and p = 0.7
+
+dbinom( 0:2 , size=2 , prob=0.7 )
+
+# this gets us the likelihood of each possible outcome - 0 w, 1 w and 2 w. These probabilities
+# basicall define a distribution of possible outcomes. We can then sample from this dist, 
+# using the r sample function rbinom - here we get one sample
+
+rbinom( 1 , size=2 , prob=0.7 )
+
+# this gets one sample of length 2 from a binom, with prob of positive outcome 0.7.
+# try it out.
+
+# this one gets 10 samples of length 2 - lets you see the pattern.
+
+rbinom( 10 , size=2 , prob=0.7 )
+
+#we can then sample the fuck out of that dist and count the numbers of each value, 
+#to confirm that what is outputted are the likelihoods we saw in dbinom a few lines up
+
+dummy_w <- rbinom( 1e5 , size=2 , prob=0.7 )
+table(dummy_w)/1e5
+
+#now lets do it but with 9 tosses, like we were doing originally
+
+dummy_w <- rbinom( 1e5 , size=9 , prob=0.7 )
+simplehist( dummy_w , xlab="dummy water count" )
+
+#note that the actual proportion - 0.7 - is only sometimes represented in the data.
+
+# we can use all of this to confirm that the model fitting worked correctly and that
+# the model is adequate for some purpose. (1) can confirm the software worked if there
+# is at least some correspondence between the data the model was trained on and it's generations.
+# (2) can be used to check how the model failed to track the data and eval if this will be a
+# problem relative to whatever you wanted to use the model to do. 
+
+# now the idea is to combine sampling from these predictive dists with sampling from 
+# the actual post dist. Recall that in rbinom above, we use only 0.7 - the most likely
+# post dist value. But there is much more data in the post dist than the most likely value.
+# this then poses the question of how to produce a predictive dist that actually uses
+# all of this information, and not merely the most likely value. The way you do this
+# is basically by going back to the post_dist, finding the relative post probabilities
+# of all the parameters, and then creating sampling dists for all of those post probabilitie,
+# aggregating their results into a single dist based on the strength of their probabilities.
+# This will essentially have the effect that 0.7 still holds the most weight in our predictive dist,
+# but all the information from the rest of the dist is still included in our final
+# predictive dist. If we don't do this, then there will be uncertainty in the post dist
+# that is not accounted for in our predictions. We want our predictions to be real - actually
+# based on the data - and thus want all of that uncertainty to be propagated forward into 
+# our predictions, even if they make the predictions on the surface seem less impressive.
+
+#simulating dist of predicted observations for a single prob value
+
+w <- rbinom( 1e4 , size=9 , prob=0.6 )
+
+# to do the bigger thing - use the post dist to feed into our predictions - we sample from the post
+# dist and input those samples, where these will automatically by weighted by relative probability
+# due to the sampling procedure, directly into the predictive procedure, which creates
+# an output for each sample. More probable samples will thus generate more observations,
+# and be duly represented in the predictive output, though alongside a lot of other
+# information that was previously excluded.
+
+w <- rbinom( 1e4 , size=9 , prob=samples )
+simplehist(w)
+
+#pg 67 - stuff on globe tossing not be independent, model failing to capture it
 
