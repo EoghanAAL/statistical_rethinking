@@ -23,11 +23,12 @@ library(rethinking)
 #is is the calculation of how likely it is that the actual data we have would occur
 #for a given P value. How likely it is that the given P value actually obtains
 #is what the prior and posterior probabilities are concerned with. Binomial is used
-#for this because there are only two possible outcomes for each interation. In the
+#for this because there are only two possible outcomes for each iteration. In the
 #code, what happens is that each p value is pumped in, and the binom outputs
 #the likelihood that the data would emerge on that p value, for each p value in
 #the prior distribution.
-#
+
+
 #We then need to actually work on calculating the posterior probability. We do
 #this by multiplying the prior probability (which indexes the likelihood that
 #any given P value actually obtains) by the likelihood (which indexes the likelihood
